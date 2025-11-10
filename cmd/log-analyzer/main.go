@@ -56,29 +56,15 @@ func run() error {
 	logger := slog.New(handler).With("name", "log-analyzer")
 
 	// Get the necessary environment variables
-	kiteAPIURL := os.Getenv("KITE_API_URL")
-	namespace := os.Getenv("NAMESPACE")
+	kiteAPIURL := getEnvOrDefault("KITE_API_URL", "")
+	namespace := getEnvOrDefault("NAMESPACE", "")
 
-	logFilePath := os.Getenv("LOG_FILE")
-	if logFilePath == "" {
-		logFilePath = defaultLogFilePath
-	}
-	pipelineRunName := os.Getenv("PIPELINE_RUN")
-	if pipelineRunName == "" {
-		pipelineRunName = "unknown"
-	}
-	gitHost := os.Getenv("GIT_HOST")
-	if gitHost == "" {
-		gitHost = "unknown"
-	}
-	repository := os.Getenv("REPOSITORY")
-	if repository == "" {
-		repository = "unknown"
-	}
-	branch := os.Getenv("BRANCH")
-	if branch == "" {
-		branch = "unknown"
-	}
+	logFilePath := getEnvOrDefault("LOG_FILE", defaultLogFilePath)
+
+	pipelineRunName := getEnvOrDefault("PIPELINE_RUN", "unknown")
+	gitHost := getEnvOrDefault("GIT_HOST", "unknown")
+	repository := getEnvOrDefault("REPOSITORY", "unknown")
+	branch := getEnvOrDefault("BRANCH", "unknown")
 	logger = logger.With(
 		"pipelineRun", pipelineRunName,
 		"gitHost", gitHost,
@@ -101,12 +87,17 @@ func run() error {
 
 	// Step 2: Process logs if step-renovate ran
 	var processedFailReason string
-	processedFailReason, err := doctor.ProcessLogFile(ctx, logFilePath)
+	processedFailReason, report, err := doctor.ProcessLogFile(ctx, logFilePath)
 	if err != nil {
 		// Exit since we couldn't analyze logs at all
 		return fmt.Errorf("failed to process logs: %w", err)
 	}
-	logger.Info("Successfully processed logs", "failureLogs", processedFailReason)
+	logger.Info("Successfully processed logs",
+		"failureLogs", processedFailReason,
+		"reportErrors", report.Errors,
+		"reportWarnings", report.Warnings,
+		"reportInfos", report.Infos,
+	)
 
 	// Create Kite client
 	kiteClient, err := kite.NewClient(kiteAPIURL)
@@ -119,6 +110,11 @@ func run() error {
 		return fmt.Errorf("request for Kite API status failed at %s: %w", kiteAPIURL, err)
 	}
 	logger.Info("Kite API status request completed", "status", kiteStatus, "apiURL", kiteAPIURL)
+
+	// Send custom webhooks (only if we have log analysis)
+	if len(report.Errors) > 0 || len(report.Warnings) > 0 || len(report.Infos) > 0 {
+		sendCustomWebhooks(ctx, logger, kiteClient, namespace, pipelineIdentifier, report)
+	}
 
 	// Send success or failure webhook
 	if processedFailReason == "" {
@@ -136,6 +132,63 @@ func run() error {
 
 	logger.Info("Successfully completed log analysis and sent webhook")
 	return nil
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return defaultValue
+}
+
+func sendCustomWebhooks(ctx context.Context, logger *slog.Logger, kiteClient *kite.Client, namespace, pipelineIdentifier string, report *doctor.SimpleReport) {
+	sentTypes := ""
+	if len(report.Errors) > 0 {
+		if err := sendCustomWebhook(ctx, kiteClient, namespace, pipelineIdentifier, "error", report.Errors); err != nil {
+			logger.Error("failed to send error webhook", "err", err)
+		} else {
+			sentTypes += "error "
+		}
+	}
+	if len(report.Warnings) > 0 {
+		if err := sendCustomWebhook(ctx, kiteClient, namespace, pipelineIdentifier, "warning", report.Warnings); err != nil {
+			logger.Error("failed to send warning webhook", "err", err)
+		} else {
+			sentTypes += "warning "
+		}
+	}
+	if len(report.Infos) > 0 {
+		if err := sendCustomWebhook(ctx, kiteClient, namespace, pipelineIdentifier, "info", report.Infos); err != nil {
+			logger.Error("failed to send info webhook", "err", err)
+		} else {
+			sentTypes += "info"
+		}
+	}
+	if sentTypes != "" {
+		logger.Info("Successfully sent custom webhooks", "types", sentTypes)
+	} else {
+		logger.Info("Custom webhooks were not sent", "errors", len(report.Errors), "warnings", len(report.Warnings), "infos", len(report.Infos))
+	}
+}
+
+func sendCustomWebhook(ctx context.Context, kiteClient *kite.Client, namespace, pipelineIdentifier, issueType string, logs []string) error {
+	if len(logs) < 1 {
+		return fmt.Errorf("found %d entries of type %s", len(logs), issueType)
+	}
+
+	payload := kite.CustomPayload{
+		PipelineId: pipelineIdentifier,
+		Namespace:  namespace,
+		Type:       issueType,
+		Logs:       logs,
+	}
+
+	marshaledPayload, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("unable to marshal payload: %w", err)
+	}
+
+	return kiteClient.SendWebhookRequest(ctx, namespace, "mintmaker-custom", marshaledPayload)
 }
 
 func sendSuccessWebhook(ctx context.Context, kiteClient *kite.Client, namespace, pipelineIdentifier string) error {

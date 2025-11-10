@@ -1,0 +1,371 @@
+// Copyright 2025 Red Hat, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package doctor
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// CheckFunc is a function that performs a check on a log line
+type CheckFunc func(line *LogEntry, report *SimpleReport)
+
+// Selectors stores all registered selector patterns and their associated check functions
+var Selectors = make(map[string]CheckFunc)
+
+// CriticalPatterns contains compiled regex patterns for identifying critical error lines
+var criticalPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)^\s*Command failed:`),
+	regexp.MustCompile(`(?i)^\s*(Error|FATAL|CRITICAL)\b`),
+	regexp.MustCompile(`(?i)^\s*Caused by:`),
+	regexp.MustCompile(`(?i)^\s*[\w.]+Error:`),
+	regexp.MustCompile(`(?i)permission denied`),
+	regexp.MustCompile(`(?i)failed`),
+	regexp.MustCompile(`(?i)exception`),
+	regexp.MustCompile(`(?i)could not connect`),
+	regexp.MustCompile(`(?i)timed out`),
+}
+
+// RegisterSelector registers a selector pattern with its associated check function
+func registerSelector(selector string, checkFunc CheckFunc) {
+	Selectors[selector] = checkFunc
+}
+
+func init() {
+	// Register all selectors
+	registerSelector("Reached PR limit - skipping PR creation", prLimitReached)
+	registerSelector("Base branch does not exist - skipping", baseBranchDoesNotExist)
+	registerSelector("Config migration necessary", configMigrationNecessary)
+	registerSelector("Config needs migrating", configMigrationNecessary)
+	registerSelector("Found renovate config errors", renovateConfigErrors)
+	registerSelector("branches info extended", upgradesAwaitingSchedule)
+	registerSelector("PR rebase requested=true", checkForRebaseRequests)
+	registerSelector("rawExec err", rawExecError)
+	registerSelector("Ignoring upgrade collision", upgradeCollision)
+	registerSelector("Platform-native commit: unknown error", platformCommitError)
+	registerSelector("File contents are invalid JSONC but parse using JSON5", invalidJSONConfig)
+	registerSelector("Repository has changed during renovation - aborting", repositoryChangedDuringRenovation)
+	registerSelector("Passing repository-changed error up", branchErrorDuringRenovation)
+}
+
+// extractUsefulError extracts the most useful parts of a potentially long error message.
+func extractUsefulError(fullMessage string, maxOutputLines int) string {
+	if fullMessage == "" {
+		return ""
+	}
+
+	lines := strings.Split(fullMessage, "\n")
+	// remove trailing empty lines
+	if lines[0] == "" {
+		lines = lines[1:]
+	}
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	// If short enough, return as-is
+	if len(lines) <= maxOutputLines {
+		return strings.TrimSpace(fullMessage)
+	}
+
+	return processLongMessage(lines, maxOutputLines)
+}
+
+// processLongMessage processes a long message, keeping critical lines and context
+func processLongMessage(lines []string, maxOutputLines int) string {
+	usefulLines := []string{strings.TrimSpace(lines[0])}
+	contextBuffer := make([]string, 0, 2) // keep previous 2 lines of context
+	cutLinesCount := 0
+	omittedLines := 0
+
+	// Pattern to match lines with only symbols like ~^=
+	symbolPattern := regexp.MustCompile(`^\s*[~^=]+\s*$`)
+
+	for i, line := range lines[1:] { // skip first line, already added
+		trimmedLine := strings.TrimSpace(line)
+
+		// Skip empty lines or lines with only symbols
+		if trimmedLine == "" || symbolPattern.MatchString(trimmedLine) {
+			continue
+		}
+
+		if i == len(lines)-1 {
+			omittedLines = cutLinesCount - len(contextBuffer)
+			if omittedLines > 0 {
+				usefulLines = append(usefulLines, fmt.Sprintf("[... %d lines omitted ...]", omittedLines))
+			}
+
+			usefulLines = append(usefulLines, contextBuffer...)
+			usefulLines = append(usefulLines, trimmedLine)
+			break
+		}
+
+		// Check if we should break and add the last few lines
+		if len(usefulLines) >= maxOutputLines {
+			omittedLines = cutLinesCount + len(lines) - i - 3 // count the remaining lines except last 3, which we always add
+			if omittedLines > 0 {
+				usefulLines = append(usefulLines, fmt.Sprintf("[... %d lines omitted ...]", omittedLines))
+			}
+
+			// Add the last few lines (very last line is empty after split)
+			if i <= len(lines)-3 {
+				lastLine4 := strings.TrimSpace(lines[len(lines)-3])
+				if lastLine4 != "" && !symbolPattern.MatchString(lastLine4) {
+					usefulLines = append(usefulLines, lastLine4)
+				}
+			}
+			if i <= len(lines)-2 {
+				lastLine3 := strings.TrimSpace(lines[len(lines)-2])
+				if lastLine3 != "" && !symbolPattern.MatchString(lastLine3) {
+					usefulLines = append(usefulLines, lastLine3)
+				}
+			}
+			lastLine1 := strings.TrimSpace(lines[len(lines)-1])
+			if lastLine1 != "" && !symbolPattern.MatchString(lastLine1) {
+				usefulLines = append(usefulLines, lastLine1)
+			}
+			break
+		}
+
+		// Check if this line matches any critical pattern
+		if isCriticalLine(trimmedLine) {
+			// Add any buffered context lines if we have cut lines
+			omittedLines = cutLinesCount - len(contextBuffer)
+			if omittedLines > 0 {
+				usefulLines = append(usefulLines, fmt.Sprintf("[... %d lines omitted ...]", omittedLines))
+			}
+			cutLinesCount = 0
+
+			usefulLines = append(usefulLines, contextBuffer...)
+			usefulLines = append(usefulLines, trimmedLine)
+			contextBuffer = contextBuffer[:0] // clear buffer
+		} else {
+			cutLinesCount++
+			// Add to context buffer (maintaining maxlen=2)
+			if len(contextBuffer) >= 2 {
+				contextBuffer = contextBuffer[1:] // remove first element
+			}
+			contextBuffer = append(contextBuffer, trimmedLine)
+		}
+	}
+
+	return strings.Join(usefulLines, "\n")
+}
+
+// isCriticalLine checks if a line matches any critical error pattern
+func isCriticalLine(line string) bool {
+	for _, pattern := range criticalPatterns {
+		if pattern.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
+// Default version with maxOutputLines=8 (matching Python default)
+func extractUsefulErrorDefault(fullMessage string) string {
+	return extractUsefulError(fullMessage, 8)
+}
+
+func prLimitReached(line *LogEntry, report *SimpleReport) {
+	report.Warning("PR limit reached - skipping PR creation")
+}
+
+// baseBranchDoesNotExist checks for base branch existence issues
+func baseBranchDoesNotExist(line *LogEntry, report *SimpleReport) {
+	if line.Extras != nil {
+		hint := ""
+		baseBranch, ok := line.Extras["baseBranch"].(string)
+		if ok && (!strings.HasPrefix(baseBranch, "/") || !strings.HasSuffix(baseBranch, "/")) {
+			hint = fmt.Sprintf("baseBranch must be a JS pattern like: /%s/", baseBranch)
+			report.Error("Base branch does not exist", "Hint", hint)
+		} else {
+			report.Error("Base branch does not exist", "Hint", "Check `baseBranchPatterns` in renovate.json")
+		}
+	} else {
+		report.Error("Base branch does not exist", "Hint", "Check `baseBranchPatterns` in renovate.json")
+	}
+}
+
+// configMigrationNecessary checks for config migration requirements
+func configMigrationNecessary(line *LogEntry, report *SimpleReport) {
+	var prettyJSONconfig []byte
+
+	if line.Extras != nil {
+		// Try newConfig first, then migratedConfig
+		var configData map[string]interface{}
+
+		if newConfig, ok := line.Extras["newConfig"].(map[string]interface{}); ok && newConfig != nil {
+			configData = newConfig
+		} else if migratedConfig, ok := line.Extras["migratedConfig"].(map[string]interface{}); ok && migratedConfig != nil {
+			configData = migratedConfig
+		}
+
+		if configData != nil {
+			var err error
+			prettyJSONconfig, err = json.MarshalIndent(configData, "", "\t")
+			if err != nil {
+				prettyJSONconfig = []byte("<unable to marshal new config>")
+			}
+		} else {
+			prettyJSONconfig = []byte("<newConfig/migratedConfig not available or invalid>")
+		}
+	} else {
+		prettyJSONconfig = []byte("<newConfig/migratedConfig not available>")
+	}
+
+	report.Warning("Config migration necessary", "New config", string(prettyJSONconfig))
+}
+
+// renovateConfigErrors checks for Renovate configuration errors
+func renovateConfigErrors(line *LogEntry, report *SimpleReport) {
+	var configErrors []string
+	errors, ok := line.Extras["errors"].([]interface{})
+	if !ok {
+		configErrors = append(configErrors, "Unable to parse config errors")
+	} else {
+		for _, errMap := range errors {
+			if errMap, ok := errMap.(map[string]interface{}); ok {
+				configErrors = append(configErrors, fmt.Sprintf("\n%s: %s", errMap["topic"], errMap["message"]))
+			}
+		}
+	}
+	report.Error("Found renovate config errors", "Errors", strings.Join(configErrors, ""))
+}
+
+// upgradesAwaitingSchedule checks for upgrades awaiting schedule
+func upgradesAwaitingSchedule(line *LogEntry, report *SimpleReport) {
+	branchesInfo, ok := line.Extras["branchesInformation"].([]interface{})
+	if !ok {
+		return
+	}
+
+	for _, branchInterface := range branchesInfo {
+		branch, ok := branchInterface.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if result, ok := branch["result"].(string); ok && result == "update-not-scheduled" {
+			report.Info("Upgrade awaiting schedule",
+				"Branch", branch["branchName"],
+				"PR No.", branch["prNo"],
+				"PR Title", branch["prTitle"])
+		}
+	}
+}
+
+// checkForRebaseRequests checks for PR rebase requests
+func checkForRebaseRequests(line *LogEntry, report *SimpleReport) {
+	branch := line.Extras["branch"]
+	report.Info("PR rebase requested", "Branch", branch)
+}
+
+// rawExecError checks for command execution errors
+func rawExecError(line *LogEntry, report *SimpleReport) {
+	errData, ok := line.Extras["err"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	fields := []interface{}{
+		"Branch", line.Extras["branch"],
+		"Duration", line.Extras["durationMs"],
+	}
+
+	if options, ok := errData["options"].(map[string]interface{}); ok {
+		fields = append(fields, "Timeout", options["timeout"])
+	}
+
+	message, _ := errData["message"].(string)
+
+	if strings.Contains(message, "Failed to download metadata for repo") {
+		fields = append(fields, "Hint", "Possible activation key issue (Failed to download metadata for repo ... Cannot download repomd.xml)")
+	}
+
+	fileNotFoundRe := regexp.MustCompile(`FileNotFoundError: \[Errno 2\] No such file or directory: '([\w\/\.\-]+)'`)
+	if matches := fileNotFoundRe.FindStringSubmatch(message); matches != nil {
+		fields = append(fields, "Hint", fmt.Sprintf("File not found: %s, check rpms.in.yaml configuration", matches[1]))
+	}
+
+	fields = append(fields, "Message", extractUsefulErrorDefault(message))
+	fields = append(fields, "\nFull message", message)
+
+	report.Error("Error executing command", fields...)
+}
+
+// upgradeCollision checks for upgrade collisions
+func upgradeCollision(line *LogEntry, report *SimpleReport) {
+	// ignore for now
+	report.Warning(
+		"Upgrade collision can prevent PR from being opened",
+		"Dependency Name", line.Extras["depName"],
+		"Current Value", line.Extras["currentValue"],
+		"Previous New Value", line.Extras["previousNewValue"],
+		"This New Value", line.Extras["thisNewValue"],
+	)
+}
+
+// platformCommitError checks for platform-native commit errors
+func platformCommitError(line *LogEntry, report *SimpleReport) {
+	errData, ok := line.Extras["err"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	errMessage, _ := errData["message"].(string)
+	task := errData["task"]
+
+	report.Error(
+		line.Msg,
+		"Branch", line.Extras["branch"],
+		"Message", errMessage,
+		"Task", fmt.Sprintf("%+v", task),
+	)
+}
+
+// invalidJSONConfig checks for invalid JSONC configuration
+func invalidJSONConfig(line *LogEntry, report *SimpleReport) {
+	context, ok := line.Extras["context"].(string)
+	if !ok {
+		report.Error(
+			"Invalid JSONC, but parsed using JSON5.",
+			"Hint", "Either fix the syntax for JSON or change config to JSON5.",
+		)
+		return
+	}
+
+	report.Error(
+		"Invalid JSONC, but parsed using JSON5.",
+		"File", context,
+		"Hint", "Either fix the syntax for JSON or change config to JSON5.",
+	)
+}
+
+// repositoryChangedDuringRenovation checks for repository changes during renovation
+func repositoryChangedDuringRenovation(line *LogEntry, report *SimpleReport) {
+	report.Error("Repository has changed during renovation")
+}
+
+// branchErrorDuringRenovation checks for branch errors during renovation
+func branchErrorDuringRenovation(line *LogEntry, report *SimpleReport) {
+	report.Error(
+		"Branch error related to 'Repository has changed during renovation'",
+		"Branch", line.Extras["branch"],
+		"Hint", "Try to delete this branch manually",
+	)
+}

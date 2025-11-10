@@ -34,19 +34,20 @@ var renovateLogLevels = map[int]string{
 }
 
 // ProcessLogFile processes logs from a file instead of streaming
-func ProcessLogFile(ctx context.Context, logFilePath string) (string, error) {
+func ProcessLogFile(ctx context.Context, logFilePath string) (string, *SimpleReport, error) {
 	errorsMap := make(map[string]int)
 	fatalMap := make(map[string]int)
+	report := &SimpleReport{}
 
 	// Check if file exists
 	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
-		return "", fmt.Errorf("log file not found (step-renovate may not have run), path: %s", logFilePath)
+		return "", report, fmt.Errorf("log file not found (step-renovate may not have run), path: %s", logFilePath)
 	}
 
 	// Open and read the file
 	file, err := os.Open(logFilePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open log file: %w", err)
+		return "", report, fmt.Errorf("failed to open log file: %w", err)
 	}
 	defer file.Close()
 
@@ -63,10 +64,10 @@ func ProcessLogFile(ctx context.Context, logFilePath string) (string, error) {
 		if lineCount%100 == 0 {
 			select {
 			case <-ctx.Done():
-				if len(errorsMap) == 0 && len(fatalMap) == 0 {
-					return "", fmt.Errorf("log processing cancelled: %w", ctx.Err())
+				if len(errorsMap) == 0 && len(fatalMap) == 0 && len(report.Errors) == 0 && len(report.Warnings) == 0 && len(report.Infos) == 0 {
+					return "", report, fmt.Errorf("log processing cancelled: %w", ctx.Err())
 				}
-				return buildErrorMessageFromLogs(errorsMap, fatalMap), nil
+				return buildErrorMessageFromLogs(errorsMap, fatalMap), report, nil
 			default:
 			}
 		}
@@ -87,16 +88,23 @@ func ProcessLogFile(ctx context.Context, logFilePath string) (string, error) {
 			formattedErr := buildErrorMessage(entry)
 			errorsMap[formattedErr]++
 		}
+
+		// Check against registered selectors
+		for selector, checkFunc := range Selectors {
+			if strings.Contains(entry.Msg, selector) {
+				checkFunc(&entry, report)
+			}
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		if len(errorsMap) == 0 && len(fatalMap) == 0 {
-			return "", fmt.Errorf("error reading log file: %w", err)
+		if len(errorsMap) == 0 && len(fatalMap) == 0 && len(report.Errors) == 0 && len(report.Warnings) == 0 && len(report.Infos) == 0 {
+			return "", report, fmt.Errorf("error reading log file: %w", err)
 		}
-		return buildErrorMessageFromLogs(errorsMap, fatalMap), nil
+		return buildErrorMessageFromLogs(errorsMap, fatalMap), report, nil
 	}
 
-	return buildErrorMessageFromLogs(errorsMap, fatalMap), nil
+	return buildErrorMessageFromLogs(errorsMap, fatalMap), report, nil
 }
 
 // unmarshal the JSON log line and extract important fields
@@ -137,7 +145,9 @@ func parseLogLine(line string) (LogEntry, error) {
 
 			entry.Msg = msgStr
 		// keep only relevant extra fields
-		case "err", "errors", "errorMessage":
+		case "err", "errors", "errorMessage", "branch", "durationMs", "depName",
+			"branchesInformation", "context", "packageFile", "currentValue",
+			"previousNewValue", "thisNewValue", "oldConfig", "newConfig", "migratedConfig":
 			entry.Extras[k] = v
 		}
 	}
