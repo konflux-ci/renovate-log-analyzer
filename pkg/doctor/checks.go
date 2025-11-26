@@ -15,7 +15,6 @@
 package doctor
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -48,18 +47,9 @@ func registerSelector(selector string, checkFunc CheckFunc) {
 func init() {
 	// Register all selectors
 	registerSelector("Reached PR limit - skipping PR creation", prLimitReached)
-	registerSelector("Base branch does not exist - skipping", baseBranchDoesNotExist)
-	registerSelector("Config migration necessary", configMigrationNecessary)
-	registerSelector("Config needs migrating", configMigrationNecessary)
 	registerSelector("Found renovate config errors", renovateConfigErrors)
-	registerSelector("branches info extended", upgradesAwaitingSchedule)
-	registerSelector("PR rebase requested=true", checkForRebaseRequests)
 	registerSelector("rawExec err", rawExecError)
-	registerSelector("Ignoring upgrade collision", upgradeCollision)
 	registerSelector("Platform-native commit: unknown error", platformCommitError)
-	registerSelector("File contents are invalid JSONC but parse using JSON5", invalidJSONConfig)
-	registerSelector("Repository has changed during renovation - aborting", repositoryChangedDuringRenovation)
-	registerSelector("Passing repository-changed error up", branchErrorDuringRenovation)
 }
 
 // extractUsefulError extracts the most useful parts of a potentially long error message.
@@ -176,59 +166,13 @@ func isCriticalLine(line string) bool {
 	return false
 }
 
-// Default version with maxOutputLines=8 (matching Python default)
+// Default version with maxOutputLines=8
 func extractUsefulErrorDefault(fullMessage string) string {
 	return extractUsefulError(fullMessage, 8)
 }
 
 func prLimitReached(line *LogEntry, report *SimpleReport) {
 	report.Warning("PR limit reached - skipping PR creation")
-}
-
-// baseBranchDoesNotExist checks for base branch existence issues
-func baseBranchDoesNotExist(line *LogEntry, report *SimpleReport) {
-	if line.Extras != nil {
-		hint := ""
-		baseBranch, ok := line.Extras["baseBranch"].(string)
-		if ok && (!strings.HasPrefix(baseBranch, "/") || !strings.HasSuffix(baseBranch, "/")) {
-			hint = fmt.Sprintf("baseBranch must be a JS pattern like: /%s/", baseBranch)
-			report.Error("Base branch does not exist", "Hint", hint)
-		} else {
-			report.Error("Base branch does not exist", "Hint", "Check `baseBranchPatterns` in renovate.json")
-		}
-	} else {
-		report.Error("Base branch does not exist", "Hint", "Check `baseBranchPatterns` in renovate.json")
-	}
-}
-
-// configMigrationNecessary checks for config migration requirements
-func configMigrationNecessary(line *LogEntry, report *SimpleReport) {
-	var prettyJSONconfig []byte
-
-	if line.Extras != nil {
-		// Try newConfig first, then migratedConfig
-		var configData map[string]interface{}
-
-		if newConfig, ok := line.Extras["newConfig"].(map[string]interface{}); ok && newConfig != nil {
-			configData = newConfig
-		} else if migratedConfig, ok := line.Extras["migratedConfig"].(map[string]interface{}); ok && migratedConfig != nil {
-			configData = migratedConfig
-		}
-
-		if configData != nil {
-			var err error
-			prettyJSONconfig, err = json.MarshalIndent(configData, "", "\t")
-			if err != nil {
-				prettyJSONconfig = []byte("<unable to marshal new config>")
-			}
-		} else {
-			prettyJSONconfig = []byte("<newConfig/migratedConfig not available or invalid>")
-		}
-	} else {
-		prettyJSONconfig = []byte("<newConfig/migratedConfig not available>")
-	}
-
-	report.Warning("Config migration necessary", "New config", string(prettyJSONconfig))
 }
 
 // renovateConfigErrors checks for Renovate configuration errors
@@ -245,34 +189,6 @@ func renovateConfigErrors(line *LogEntry, report *SimpleReport) {
 		}
 	}
 	report.Error("Found renovate config errors", "Errors", strings.Join(configErrors, ""))
-}
-
-// upgradesAwaitingSchedule checks for upgrades awaiting schedule
-func upgradesAwaitingSchedule(line *LogEntry, report *SimpleReport) {
-	branchesInfo, ok := line.Extras["branchesInformation"].([]interface{})
-	if !ok {
-		return
-	}
-
-	for _, branchInterface := range branchesInfo {
-		branch, ok := branchInterface.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		if result, ok := branch["result"].(string); ok && result == "update-not-scheduled" {
-			report.Info("Upgrade awaiting schedule",
-				"Branch", branch["branchName"],
-				"PR No.", branch["prNo"],
-				"PR Title", branch["prTitle"])
-		}
-	}
-}
-
-// checkForRebaseRequests checks for PR rebase requests
-func checkForRebaseRequests(line *LogEntry, report *SimpleReport) {
-	branch := line.Extras["branch"]
-	report.Info("PR rebase requested", "Branch", branch)
 }
 
 // rawExecError checks for command execution errors
@@ -308,18 +224,6 @@ func rawExecError(line *LogEntry, report *SimpleReport) {
 	report.Error("Error executing command", fields...)
 }
 
-// upgradeCollision checks for upgrade collisions
-func upgradeCollision(line *LogEntry, report *SimpleReport) {
-	// ignore for now
-	report.Warning(
-		"Upgrade collision can prevent PR from being opened",
-		"Dependency Name", line.Extras["depName"],
-		"Current Value", line.Extras["currentValue"],
-		"Previous New Value", line.Extras["previousNewValue"],
-		"This New Value", line.Extras["thisNewValue"],
-	)
-}
-
 // platformCommitError checks for platform-native commit errors
 func platformCommitError(line *LogEntry, report *SimpleReport) {
 	errData, ok := line.Extras["err"].(map[string]interface{})
@@ -335,37 +239,5 @@ func platformCommitError(line *LogEntry, report *SimpleReport) {
 		"Branch", line.Extras["branch"],
 		"Message", errMessage,
 		"Task", fmt.Sprintf("%+v", task),
-	)
-}
-
-// invalidJSONConfig checks for invalid JSONC configuration
-func invalidJSONConfig(line *LogEntry, report *SimpleReport) {
-	context, ok := line.Extras["context"].(string)
-	if !ok {
-		report.Error(
-			"Invalid JSONC, but parsed using JSON5.",
-			"Hint", "Either fix the syntax for JSON or change config to JSON5.",
-		)
-		return
-	}
-
-	report.Error(
-		"Invalid JSONC, but parsed using JSON5.",
-		"File", context,
-		"Hint", "Either fix the syntax for JSON or change config to JSON5.",
-	)
-}
-
-// repositoryChangedDuringRenovation checks for repository changes during renovation
-func repositoryChangedDuringRenovation(line *LogEntry, report *SimpleReport) {
-	report.Error("Repository has changed during renovation")
-}
-
-// branchErrorDuringRenovation checks for branch errors during renovation
-func branchErrorDuringRenovation(line *LogEntry, report *SimpleReport) {
-	report.Error(
-		"Branch error related to 'Repository has changed during renovation'",
-		"Branch", line.Extras["branch"],
-		"Hint", "Try to delete this branch manually",
 	)
 }

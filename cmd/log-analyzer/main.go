@@ -172,10 +172,6 @@ func sendCustomWebhooks(ctx context.Context, logger *slog.Logger, kiteClient *ki
 }
 
 func sendCustomWebhook(ctx context.Context, kiteClient *kite.Client, namespace, pipelineIdentifier, issueType string, logs []string) error {
-	if len(logs) < 1 {
-		return fmt.Errorf("found %d entries of type %s", len(logs), issueType)
-	}
-
 	payload := kite.CustomPayload{
 		PipelineId: pipelineIdentifier,
 		Namespace:  namespace,
