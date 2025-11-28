@@ -163,7 +163,7 @@ func buildErrorMessageFromLogs(errorsMap, fatalMap map[string]int) string {
 		return ""
 	}
 
-	return fmt.Sprintf("Mintmaker finished with \n%s %s",
+	return fmt.Sprintf("Mintmaker finished with %s%s",
 		errString,
 		fatalString)
 }
@@ -187,7 +187,7 @@ func formatFailMsg(logs map[string]int, logLevel string) string {
 		}
 	}
 
-	return fmt.Sprintf("%d %s:\n%s", totalCount, logLevel, strings.Join(uniqueMessages, ""))
+	return fmt.Sprintf("%d %s: %s", totalCount, logLevel, strings.Join(uniqueMessages, ""))
 }
 
 // build a single error message from a log entry, including nested error details if available
@@ -197,12 +197,12 @@ func buildErrorMessage(logEntry LogEntry) string {
 	// Try to get additional error details
 	if errMap, ok := logEntry.Extras["err"].(map[string]any); ok {
 		if message, ok := errMap["message"].(string); ok {
-			return fmt.Sprintf("%s: %s\n", errMsg, message)
+			return fmt.Sprintf("%s: %s", errMsg, message)
 		}
 	}
 
 	if errorMessage, ok := logEntry.Extras["errorMessage"].(string); ok {
-		return fmt.Sprintf("%s: %s\n", errMsg, errorMessage)
+		return fmt.Sprintf("%s: %s", errMsg, errorMessage)
 	}
 
 	return fmt.Sprintf("%s\n", errMsg)

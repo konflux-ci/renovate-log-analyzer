@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/konflux-ci/renovate-log-analyzer/pkg/doctor"
@@ -78,7 +79,7 @@ func run() error {
 	logger = logger.With("namespace", namespace)
 
 	// Now use the logger throughout your code
-	logger.Info("Starting log analyzer service")
+	logger.Info("Starting log analyzer tool")
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -98,6 +99,14 @@ func run() error {
 		"reportWarnings", report.Warnings,
 		"reportInfos", report.Infos,
 	)
+
+	if *devMode {
+		fmt.Println("----- Log Analysis Result -----")
+		fmt.Println("Fail logs:\n", processedFailReason)
+		fmt.Println("Report Errors:\n", strings.Join(report.Errors, "\n-------------\n"))
+		fmt.Println("Report Warnings:\n", strings.Join(report.Warnings, "\n-------------\n"))
+		fmt.Println("-----------------------------")
+	}
 
 	// Create Kite client
 	kiteClient, err := kite.NewClient(kiteAPIURL)

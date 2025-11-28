@@ -1,6 +1,6 @@
 # Renovate Log Analyzer - Detailed Documentation
 
-This document provides comprehensive documentation for the Renovate Log Analyzer service, which is part of the [MintMaker](https://github.com/konflux-ci/mintmaker) ecosystem.
+This document provides comprehensive documentation for the Renovate Log Analyzer tool, which is part of the [MintMaker](https://github.com/konflux-ci/mintmaker) ecosystem.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ This document provides comprehensive documentation for the Renovate Log Analyzer
 
 ## Overview
 
-This service analyzes Renovate logs and sends categorized results to [Kite API](https://github.com/konflux-ci/kite) for display in the Konflux UI Issues dashboard. It runs as the last step of `tekton pipeline` created by the [MintMaker controller](https://github.com/konflux-ci/mintmaker).
+This tool analyzes Renovate logs and sends categorized results to [Kite API](https://github.com/konflux-ci/kite) for display in the Konflux UI Issues dashboard. It runs as the last step of `tekton pipeline` created by the [MintMaker controller](https://github.com/konflux-ci/mintmaker).
 
 ## Log Analyzer Components
 
@@ -78,18 +78,9 @@ func (r *SimpleReport) Error(msg string, fields ...interface{}) {
 ## Selector List
 
 1. `"Reached PR limit - skipping PR creation"` - Warning
-2. `"Base branch does not exist - skipping"` - Error
-3. `"Config migration necessary"` - Warning
-4. `"Config needs migrating"` - Warning
-5. `"Found renovate config errors"` - Error
-6. `"branches info extended"` - Info
-7. `"PR rebase requested=true"` - Info
-8. `"rawExec err"` - Error
-9. `"Ignoring upgrade collision"` - Warning
-10. `"Platform-native commit: unknown error"` - Error
-11. `"File contents are invalid JSONC but parse using JSON5"` - Error
-12. `"Repository has changed during renovation - aborting"` - Error
-13. `"Passing repository-changed error up"` - Error
+2. `"Found renovate config errors"` - Error
+3. `"rawExec err"` - Error
+4. `"Platform-native commit: unknown error"` - Error
 
 ## Log Levels
 
@@ -228,7 +219,7 @@ The Kite client (`client.go`) handles all communication with the [Kite API backe
 
 ### Command Line Flags
 
-- **`-dev`**: Enable development mode with more verbose logging and source location (default: false)
+- **`-dev`**: Enable development mode with more verbose logging, source location and the results printed into the console (default: false)
 
 To test the log analyzer locally using `go run ./cmd/log-analyzer/main.go` the following set up is needed:
 
@@ -260,12 +251,12 @@ The log file should contain Renovate JSON logs, with each line being a separate 
 
 ```bash
 # Set required environment variables
-export NAMESPACE=namespace-name
+export NAMESPACE=namespace-name                             # placeholder for testing
 export KITE_API_URL=https://kite-api.example.com            # placeholder for testing
-export GIT_HOST=github.com
-export REPOSITORY=owner/repo
-export BRANCH=main
-export LOG_FILE="./pkg/doctor/testdata/fatal_exit_logs.json" # path to test log file (or /test_logs.json for testing the string-based categorization)
+export GIT_HOST=github.com                                  # optional
+export REPOSITORY=owner/repo                                # optional
+export BRANCH=main                                          # optional
+export LOG_FILE="./pkg/doctor/testdata/test_logs.json" # path to test log file (or /test_logs.json for testing the string-based categorization)
 export PIPELINE_RUN=test-run-123                            # optional
 
 # Run the application
@@ -291,6 +282,6 @@ go run ./cmd/log-analyzer/main.go --dev
 
 ### Notes
 
-- **Kite API URL**: For testing log parsing only, the Kite API URL does not need to be a working endpoint. The service will parse the JSON logs from the file and display results via logs, but webhook sending will fail if the API is not accessible.
+- **Kite API URL**: For testing log parsing only, the Kite API URL does not need to be a working endpoint. The tool will parse the JSON logs from the file and display results via logs, but webhook sending will fail if the API is not accessible.
 - **Log file location**: Ensure the log file path is correct and the file is readable. If `LOG_FILE` is not set, it defaults to `/workspace/shared-data/renovate-logs.json`.
 - **Error handling**: The application exits with code 1 if any step fails (missing environment variables, log processing errors, API failures, etc.)

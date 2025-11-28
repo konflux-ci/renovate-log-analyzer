@@ -1,10 +1,10 @@
 # Renovate Log Analyzer
 
-A Go-based service for analyzing [Renovate](https://github.com/renovatebot/renovate) logs and reporting issues to [Kite API](https://github.com/konflux-ci/kite). Part of the [MintMaker](https://github.com/konflux-ci/mintmaker) ecosystem.
+A Go-based tool for analyzing [Renovate](https://github.com/renovatebot/renovate) logs and reporting issues to [Kite API](https://github.com/konflux-ci/kite). Part of the [MintMaker](https://github.com/konflux-ci/mintmaker) ecosystem.
 
 ## Overview
 
-This service runs as the final step of Tekton pipelines created by the [MintMaker controller](https://github.com/konflux-ci/mintmaker). It analyzes Renovate JSON logs, extracts and categorizes issues, and reports them to Kite API for display in the Konflux UI Issues dashboard.
+This tool runs as the final step of Tekton pipelines created by the [MintMaker controller](https://github.com/konflux-ci/mintmaker). It analyzes Renovate JSON logs, extracts and categorizes issues, and reports them to Kite API for display in the Konflux UI Issues dashboard.
 
 ### Key Features
 

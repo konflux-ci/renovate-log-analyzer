@@ -86,6 +86,7 @@ func processLongMessage(lines []string, maxOutputLines int) string {
 	symbolPattern := regexp.MustCompile(`^\s*[~^=]+\s*$`)
 
 	for i, line := range lines[1:] { // skip first line, already added
+		i = i + 1 // adjust index because of slicing
 		trimmedLine := strings.TrimSpace(line)
 
 		// Skip empty lines or lines with only symbols
@@ -106,7 +107,7 @@ func processLongMessage(lines []string, maxOutputLines int) string {
 
 		// Check if we should break and add the last few lines
 		if len(usefulLines) >= maxOutputLines {
-			omittedLines = cutLinesCount + len(lines) - i - 3 // count the remaining lines except last 3, which we always add
+			omittedLines = cutLinesCount + len(lines) - i - 2 // count the remaining lines except last 3, which we always add
 			if omittedLines > 0 {
 				usefulLines = append(usefulLines, fmt.Sprintf("[... %d lines omitted ...]", omittedLines))
 			}
@@ -210,7 +211,7 @@ func rawExecError(line *LogEntry, report *SimpleReport) {
 	message, _ := errData["message"].(string)
 
 	if strings.Contains(message, "Failed to download metadata for repo") {
-		fields = append(fields, "Hint", "Possible activation key issue (Failed to download metadata for repo ... Cannot download repomd.xml)")
+		fields = append(fields, "Hint", "Possible Red Hat subscription activation key issue")
 	}
 
 	fileNotFoundRe := regexp.MustCompile(`FileNotFoundError: \[Errno 2\] No such file or directory: '([\w\/\.\-]+)'`)
@@ -219,7 +220,6 @@ func rawExecError(line *LogEntry, report *SimpleReport) {
 	}
 
 	fields = append(fields, "Message", extractUsefulErrorDefault(message))
-	fields = append(fields, "\nFull message", message)
 
 	report.Error("Error executing command", fields...)
 }
@@ -232,12 +232,15 @@ func platformCommitError(line *LogEntry, report *SimpleReport) {
 	}
 
 	errMessage, _ := errData["message"].(string)
-	task := errData["task"]
+	fullTask := ""
+	for _, cmd := range errData["task"].(map[string]interface{})["commands"].([]interface{}) {
+		fullTask = fmt.Sprintf("%s %s", fullTask, cmd)
+	}
 
 	report.Error(
 		line.Msg,
 		"Branch", line.Extras["branch"],
 		"Message", errMessage,
-		"Task", fmt.Sprintf("%+v", task),
+		"Task", fullTask,
 	)
 }
