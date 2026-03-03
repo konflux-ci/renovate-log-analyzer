@@ -22,7 +22,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
+	"strings"
 	"time"
 )
 
@@ -111,13 +111,15 @@ func (c *Client) sendRequest(req *http.Request, out any) error {
 	return nil
 }
 
-// GetVersion returns the Kite API version
+// GetKiteStatus returns the Kite API status
 func (c *Client) GetKiteStatus(ctx context.Context) (string, error) {
 	// baseURL is already validated in NewClient, so this should never fail
-	u, _ := url.Parse(c.baseURL)
-	u.Path = path.Join(u.Path, "api/v1/health")
+	urlPath, err := c.buildURL("api/v1/health")
+	if err != nil {
+		return "", fmt.Errorf("failed to build URL: %w", err)
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlPath, nil)
 	if err != nil {
 		return "", err
 	}
@@ -144,8 +146,16 @@ func (c *Client) GetKiteStatus(ctx context.Context) (string, error) {
 // creates a request, and sends it to Kite API
 func (c *Client) SendWebhookRequest(ctx context.Context, namespace string, webhookName string, payload []byte) error {
 	// baseURL is already validated in NewClient, so this should never fail
-	u, _ := url.Parse(c.baseURL)
-	u.Path = path.Join(u.Path, "api/v1/webhooks", webhookName)
+	urlPath, err := c.buildURL("api/v1/webhooks", webhookName)
+	if err != nil {
+		return fmt.Errorf("failed to build URL: %w", err)
+	}
+
+	// parse the URL path to add the namespace to the query parameters
+	u, err := url.Parse(urlPath)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
+	}
 
 	q := u.Query()
 	q.Set("namespace", namespace)
@@ -157,4 +167,14 @@ func (c *Client) SendWebhookRequest(ctx context.Context, namespace string, webho
 	}
 
 	return c.sendRequest(req, nil)
+}
+
+// buildURL constructs a URL by joining the client's base URL with the given path segments.
+// The resulting path always ends with a trailing slash
+func (c *Client) buildURL(segments ...string) (string, error) {
+	raw, err := url.JoinPath(c.baseURL, segments...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(raw, "/") + "/", nil
 }
