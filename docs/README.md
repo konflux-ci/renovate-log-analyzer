@@ -15,6 +15,7 @@ This document provides comprehensive documentation for the Renovate Log Analyzer
   - [How It Works](#how-it-works)
   - [Example](#example)
 - [Kite Client](#kite-client)
+- [Makefile (local development)](#makefile-local-development)
 - [Local Testing](#local-testing)
   - [Command Line Flags](#command-line-flags)
   - [Required Environment Variables](#required-environment-variables)
@@ -215,6 +216,29 @@ The Kite client (`client.go`) handles all communication with the [Kite API backe
 2. **`pipeline-failure`**: Sent when ERROR or FATAL level entries exist
 3. **`mintmaker-custom`**: Sent for categorized issues (errors, warnings, infos) discovered by selectors
 
+## Makefile (local development)
+
+The repository root [`Makefile`](../Makefile) wraps common tasks. Run **`make help`** for a short summary printed by the Makefile.
+
+| Target | What it does |
+|--------|----------------|
+| **`make setup`** | Ensures `go` is on `PATH`, runs `go mod download`, creates `.local/secrets/kite-token` with a mock value only if that file is missing. |
+| **`make test`** | Runs `go test ./...`. |
+| **`make run-dev`** | Runs `go run ./cmd/log-analyzer/main.go --dev` with environment wired in the recipe. |
+
+### make run-dev variables
+
+
+`NAMESPACE`, `KITE_API_URL`, `KITE_AUTH_TOKEN_FILE`, and `LOG_FILE` are defined in the Makefile with **`?=`** defaults. Those values can be overwritten:
+
+```bash
+make run-dev KITE_API_URL=https://kite.example.com LOG_FILE=./other.json
+```
+
+If the same names are **exported in shell**, those values are already defined when Make starts, so **`?=` does not replace them**. To force the Makefile defaults for one run, either **unset** those variables or pass explicit values on the `make` command line (command-line assignments take precedence).
+
+ `GIT_HOST`, `REPOSITORY`, and `BRANCH` are currently set only inside the `run-dev` recipe as they have purely informatinal value. For personalised runs, use shell-first `go run` flow in [Local Testing](#local-testing) instead.
+
 ## Local Testing
 
 ### Command Line Flags
@@ -229,6 +253,7 @@ The application requires the following environment variables:
 
 - **`NAMESPACE`**: Kubernetes namespace (required)
 - **`KITE_API_URL`**: URL to the Kite API endpoint (required)
+- **`KITE_AUTH_TOKEN_FILE`**: Path to a file containing the Kite auth token (required)
 - **`GIT_HOST`**: Git host (e.g., github.com) (optional)
 - **`REPOSITORY`**: Repository name (optional)
 - **`BRANCH`**: Branch name (optional)
@@ -253,6 +278,7 @@ The log file should contain Renovate JSON logs, with each line being a separate 
 # Set required environment variables
 export NAMESPACE=namespace-name                             # placeholder for testing
 export KITE_API_URL=https://kite-api.example.com            # placeholder for testing
+export KITE_AUTH_TOKEN_FILE="./.local/secrets/kite-token"                      # needs to be existing token file
 export GIT_HOST=github.com                                  # optional
 export REPOSITORY=owner/repo                                # optional
 export BRANCH=main                                          # optional

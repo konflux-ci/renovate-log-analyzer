@@ -4,7 +4,9 @@ A Go-based tool for analyzing [Renovate](https://github.com/renovatebot/renovate
 
 ## Overview
 
-This tool runs as the final step of Tekton pipelines created by the [MintMaker controller](https://github.com/konflux-ci/mintmaker). It analyzes Renovate JSON logs, extracts and categorizes issues, and reports them to Kite API for display in the Konflux UI Issues dashboard.
+This tool runs as the final step of Tekton pipelines created by the [MintMaker controller](https://github.com/konflux-ci/mintmaker).
+
+It reads Renovate JSON logs, extracts and categorizes issues, and reports them to Kite for the Konflux UI Issues dashboard.
 
 ### Key Features
 
@@ -15,57 +17,99 @@ This tool runs as the final step of Tekton pipelines created by the [MintMaker c
 
 ## How It Works
 
-1. **Log Processing**: Reads Renovate JSON logs and extracts ERROR (level 50) and FATAL (level 60) entries
-2. **Error Aggregation**: Aggregates level-based errors by message with duplicate tracking
-3. **Selector Checks**: Pattern matches log messages against predefined selectors to extract meaningful issues
-4. **Health Check**: Verifies Kite API availability before sending webhooks
-5. **Webhook Notification**: Sends `pipeline-success`, `pipeline-failure`, or `mintmaker-custom` webhooks based on findings
+1. **Log Processing**: reads JSON logs; extracts ERROR (50) and FATAL (60) entries
+2. **Aggregation**: groups level-based errors by message with duplicate counts
+3. **Selectors**: pattern-matches messages into actionable issues
+4. **Health Check**: probes Kite before sending webhooks
+5. **Webhooks**: sends success, failure, or custom payloads based on findings
+
+## Token File
+
+The tool reads the token from **`KITE_AUTH_TOKEN_FILE`** (path on the host or inside the container).
+
+For a **local mock** token and modules, run **`make setup`** (see [Quick start](#quick-start)). That creates `.local/secrets/kite-token` only if it is missing.
+
+> **Note:** With a mock token and placeholder `KITE_API_URL`, log analysis still runs; the HTTP step to Kite may fail. That is expected.
+
+If real token is available, set `KITE_AUTH_TOKEN_FILE` to the real secret path. When using a real token, be sure to change the `NAMESPACE` env var to the correct one as well.
 
 ## Quick Start
 
 ```bash
-# Set required environment variables
-export NAMESPACE=your-namespace
-export KITE_API_URL=https://kite-api.example.com
-export GIT_HOST=github.com
-export REPOSITORY=owner/repo
-export BRANCH=main
-export LOG_FILE="./pkg/doctor/testdata/test_logs.json"
-
-# Run the analyzer
-go run ./cmd/log-analyzer/main.go --dev
+make setup
 ```
+
+Smoke run (placeholder Kite URL; webhook step may fail as noted under [Token File](#token-file)):
+
+```bash
+make run-dev
+```
+
+Overrides (use real values when available):
+
+```bash
+make run-dev \
+  KITE_API_URL=https://kite.example.com \
+  KITE_AUTH_TOKEN_FILE=/path/to/your/token \
+  LOG_FILE=./path/to/renovate-logs.json
+```
+
+Shell-first workflow (real backend): export the same variable names, then `go run ./cmd/log-analyzer/main.go --dev`. See [Local testing](docs/README.md#local-testing).
+
+## Run From Source
+
+Use the root [`Makefile`](Makefile): `make help`, `make setup`, `make test`, `make run-dev`. Extended notes: [Makefile (local development)](docs/README.md#makefile-local-development).
+
+Or follow [docs/README.md](docs/README.md) for architecture and [local testing](docs/README.md#local-testing).
+
+## Run With Container Image
+
+Image: [`quay.io/konflux-ci/renovate-log-analyzer:latest`](https://quay.io/konflux-ci/renovate-log-analyzer:latest).
+
+```bash
+podman run --rm \
+  -e NAMESPACE="your-namespace" \
+  -e KITE_API_URL="https://kite-api.example.com" \
+  -e KITE_AUTH_TOKEN_FILE="/run/secrets/kite-token" \
+  -e LOG_FILE="/work/renovate-logs.json" \
+  -v "./pkg/doctor/testdata/fatal_exit_logs.json:/work/renovate-logs.json:ro" \
+  -v "./.local/secrets/kite-token:/run/secrets/kite-token:ro" \
+  quay.io/konflux-ci/renovate-log-analyzer:latest
+```
+
+## Makefile
+
+Targets: `make help`, `make setup`, `make test`, `make run-dev`. Behavior, defaults, and env precedence: [Makefile (local development)](docs/README.md#makefile-local-development).
 
 ## Documentation
 
-For detailed documentation, see [docs/README.md](docs/README.md), which includes:
-
-- Architecture and implementation details
-- Complete selector list with examples
-- `extractUsefulError` function documentation
-- Local testing guide
-- Kite client documentation
+[docs/README.md](docs/README.md) — architecture, selectors, `extractUsefulError`, local testing, Kite client.
 
 ## Environment Variables
 
-### Required
+**Required**
+
 - **`NAMESPACE`**: Kubernetes namespace
-- **`KITE_API_URL`**: URL to the Kite API endpoint
+- **`KITE_API_URL`**: Kite API base URL
+- **`KITE_AUTH_TOKEN_FILE`**: path to a file containing the auth token
 
-### Optional
-- **`GIT_HOST`**: Git host (default: "unknown")
-- **`REPOSITORY`**: Repository name (default: "unknown")
-- **`BRANCH`**: Branch name (default: "unknown")
-- **`LOG_FILE`**: Path to log file (default: `/workspace/shared-data/renovate-logs.json`)
-- **`PIPELINE_RUN`**: Pipeline run identifier (default: "unknown")
+**Optional**
 
-### Flags
-- **`--dev`**: Enable development mode with debug logging and source locations
+- **`GIT_HOST`**: default `unknown`
+- **`REPOSITORY`**: default `unknown`
+- **`BRANCH`**: default `unknown`
+- **`LOG_FILE`**: default `/workspace/shared-data/renovate-logs.json`
+- **`PIPELINE_RUN`**: default `unknown`
+
+**Flags**
+
+- **`--dev`**: verbose logging and source locations
 
 ## Project Structure
 
 ```
 renovate-log-analyzer/
+├── Makefile                 # Local dev: make help, setup, test, run-dev
 ├── cmd/
 │   └── log-analyzer/
 │       └── main.go          # Entry point
