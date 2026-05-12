@@ -1,0 +1,83 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check go mod tidy
+        run: |
+          go mod tidy
+          # With no external deps, Go may not create go.sum; `git diff go.sum` then errors.
+          if [ -n "$(git status --porcelain -- go.mod go.sum)" ]; then
+            echo "go.mod or go.sum is not tidy. Run 'go mod tidy' and commit the result."
+            git status go.mod go.sum
+            git --no-pager diff -- go.mod || true
+            if [ -f go.sum ]; then
+              git --no-pager diff -- go.sum || true
+            fi
+            exit 1
+          fi
+
+      - name: Check format
+        run: |
+          go fmt ./...
+          if ! git diff --exit-code; then
+            echo "Go sources are not gofmt-clean. Run 'go fmt ./...' and commit."
+            git --no-pager diff
+            exit 1
+          fi
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Build all packages
+        run: go build -o /dev/null ./...
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          args: --timeout=5m
+
+      - name: Set up Node for markdownlint
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: markdownlint
+        run: npx --yes markdownlint-cli@0.48.0 "**/*.md"

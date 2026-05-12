@@ -49,7 +49,7 @@ func ProcessLogFile(ctx context.Context, logFilePath string) (string, *SimpleRep
 	if err != nil {
 		return "", report, fmt.Errorf("failed to open log file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Read line by line
 	const maxBufferSize = 1 * 1024 * 1024

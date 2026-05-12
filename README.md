@@ -87,13 +87,13 @@ Targets: `make help`, `make setup`, `make test`, `make run-dev`. Behavior, defau
 
 ## Environment Variables
 
-**Required**
+### Required
 
 - **`NAMESPACE`**: Kubernetes namespace
 - **`KITE_API_URL`**: Kite API base URL
 - **`KITE_AUTH_TOKEN_FILE`**: path to a file containing the auth token
 
-**Optional**
+### Optional
 
 - **`GIT_HOST`**: default `unknown`
 - **`REPOSITORY`**: default `unknown`
@@ -101,13 +101,13 @@ Targets: `make help`, `make setup`, `make test`, `make run-dev`. Behavior, defau
 - **`LOG_FILE`**: default `/workspace/shared-data/renovate-logs.json`
 - **`PIPELINE_RUN`**: default `unknown`
 
-**Flags**
+### Flags
 
 - **`--dev`**: verbose logging and source locations
 
 ## Project Structure
 
-```
+```text
 renovate-log-analyzer/
 ├── Makefile                 # Local dev: make help, setup, test, run-dev
 ├── cmd/

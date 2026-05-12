@@ -51,9 +51,9 @@ func formatSimpleMessage(msg string, fields []interface{}) string {
 			key := fmt.Sprintf("%v", fields[i])
 			value := fields[i+1]
 			if key == "Message" {
-				result.WriteString(fmt.Sprintf("\n%s: %v\n", key, value))
+				fmt.Fprintf(&result, "\n%s: %v\n", key, value)
 			} else {
-				result.WriteString(fmt.Sprintf(" | %s: %v", key, value))
+				fmt.Fprintf(&result, " | %s: %v", key, value)
 			}
 
 		}
