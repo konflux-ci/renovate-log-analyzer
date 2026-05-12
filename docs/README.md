@@ -12,7 +12,6 @@ This document provides comprehensive documentation for the Renovate Log Analyzer
 - [Selector List](#selector-list)
 - [Log Levels](#log-levels)
 - [extractUsefulError Function](#extractusefulerror-function)
-  - [How It Works](#how-it-works)
   - [Example](#example)
 - [Kite Client](#kite-client)
 - [Makefile (local development)](#makefile-local-development)
@@ -21,7 +20,7 @@ This document provides comprehensive documentation for the Renovate Log Analyzer
   - [Required Environment Variables](#required-environment-variables)
   - [Test Log File Format](#test-log-file-format)
   - [Example Test Command](#example-test-command)
-  - [How It Works](#how-it-works-1)
+  - [How It Works](#how-it-works)
   - [Notes](#notes)
 
 ## Overview
@@ -51,12 +50,12 @@ The message-based approach uses selector pattern matching:
 ```go
 // Register a selector at initialization
 func init() {
-    registerSelector("Reached PR limit - skipping PR creation", prLimitReached)
+  registerSelector("Reached PR limit - skipping PR creation", prLimitReached)
 }
 
 // Check function
 func prLimitReached(line *LogEntry, report *SimpleReport) {
-	report.Warning("PR limit reached - skipping PR creation")
+  report.Warning("PR limit reached - skipping PR creation")
 }
 ```
 
@@ -98,7 +97,7 @@ Following [Renovate documentation](https://docs.renovatebot.com/troubleshooting/
 
 The `extractUsefulError` function intelligently extracts the most useful parts of potentially long error messages. It's designed to reduce noise while preserving critical information and context.
 
-### How It Works
+**How it works:**
 
 1. **Preserves the first line**: Always keeps the initial error message for context
 2. **Identifies critical lines**: Uses regex patterns to detect important error lines (e.g., "Command failed:", "Error:", "FATAL:", "Caused by:", etc.)
@@ -112,6 +111,7 @@ The `extractUsefulError` function intelligently extracts the most useful parts o
 The function transforms verbose error messages into concise, actionable summaries. Below is an example of the transformation:
 
 **Before** - Full verbose error message with many lines of stack traces and context:
+
 ```console
 Command failed: hashin h11==0.16.0 -r python/kserve/requirements.txt
 Traceback (most recent call last):
@@ -184,6 +184,7 @@ urllib.error.URLError: <urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certifica
 ```
 
 **After** - Same error after processing with `extractUsefulError`, highlighting only the critical parts:
+
 ```console
 Command failed: hashin h11==0.16.0 -r python/kserve/requirements.txt
 File "/home/renovate/.local/bin/hashin", line 7, in <module>
@@ -221,13 +222,12 @@ The Kite client (`client.go`) handles all communication with the [Kite API backe
 The repository root [`Makefile`](../Makefile) wraps common tasks. Run **`make help`** for a short summary printed by the Makefile.
 
 | Target | What it does |
-|--------|----------------|
+| -------- | ---------------- |
 | **`make setup`** | Ensures `go` is on `PATH`, runs `go mod download`, creates `.local/secrets/kite-token` with a mock value only if that file is missing. |
 | **`make test`** | Runs `go test ./...`. |
 | **`make run-dev`** | Runs `go run ./cmd/log-analyzer/main.go --dev` with environment wired in the recipe. |
 
 ### make run-dev variables
-
 
 `NAMESPACE`, `KITE_API_URL`, `KITE_AUTH_TOKEN_FILE`, and `LOG_FILE` are defined in the Makefile with **`?=`** defaults. Those values can be overwritten:
 
@@ -291,20 +291,20 @@ go run ./cmd/log-analyzer/main.go --dev
 
 ### How It Works
 
-1. **Log Processing**: The application reads the log file and extracts ERROR (level 50) and FATAL (level 60) entries. 
+1. **Log Processing**: The application reads the log file and extracts ERROR (level 50) and FATAL (level 60) entries.
 
 2. **Error Aggregation**: Level based errors are aggregated by message, with duplicate counts tracked.
 
 3. **Check against selectors**: Checks against the integrated Selectors are performed for each parsed log entry. Only the interesting log messages (with additional information extracted from logs) are kept in categorised groups (Errors, Warnings, Infos).
 
-3. **Kite API Health Check**: Before sending webhooks, the application checks the Kite API health status.
+4. **Kite API Health Check**: Before sending webhooks, the application checks the Kite API health status.
 
-4. **Webhook Notification**:
+5. **Webhook Notification**:
    - If no errors are found, sends a `pipeline-success` webhook
    - If errors are found, sends a `pipeline-failure` webhook with the aggregated failure reason
    - If errors, warnings or infos are present in the generated report, send the corresponding custom `mintmaker-custom` webhook request.
 
-5. **Pipeline Identifier**: The pipeline identifier is constructed as `{GIT_HOST}/{REPOSITORY}@{BRANCH}`.
+6. **Pipeline Identifier**: The pipeline identifier is constructed as `{GIT_HOST}/{REPOSITORY}@{BRANCH}`.
 
 ### Notes
 

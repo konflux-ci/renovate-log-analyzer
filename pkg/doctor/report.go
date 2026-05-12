@@ -20,11 +20,13 @@ import (
 	"strings"
 )
 
+// Error adds a new error message entry to the report.
 func (r *SimpleReport) Error(msg string, fields ...interface{}) {
 	formatted := formatSimpleMessage(msg, fields)
 	r.Errors = append(r.Errors, formatted)
 }
 
+// Warning adds a new warning message entry to the report.
 func (r *SimpleReport) Warning(msg string, fields ...interface{}) {
 	formatted := formatSimpleMessage(msg, fields)
 	if slices.Contains(r.Warnings, formatted) {
@@ -33,6 +35,7 @@ func (r *SimpleReport) Warning(msg string, fields ...interface{}) {
 	r.Warnings = append(r.Warnings, formatted)
 }
 
+// Info adds a new info message entry to the report.
 func (r *SimpleReport) Info(msg string, fields ...interface{}) {
 	formatted := formatSimpleMessage(msg, fields)
 	r.Infos = append(r.Infos, formatted)
@@ -51,9 +54,9 @@ func formatSimpleMessage(msg string, fields []interface{}) string {
 			key := fmt.Sprintf("%v", fields[i])
 			value := fields[i+1]
 			if key == "Message" {
-				result.WriteString(fmt.Sprintf("\n%s: %v\n", key, value))
+				fmt.Fprintf(&result, "\n%s: %v\n", key, value)
 			} else {
-				result.WriteString(fmt.Sprintf(" | %s: %v", key, value))
+				fmt.Fprintf(&result, " | %s: %v", key, value)
 			}
 
 		}

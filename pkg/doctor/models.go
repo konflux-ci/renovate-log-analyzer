@@ -14,7 +14,7 @@
 
 package doctor
 
-// Structured format for each log
+// LogEntry is a parsed Renovate log line with level, message, and extra fields.
 type LogEntry struct {
 	Level  string
 	Msg    string

@@ -26,17 +26,20 @@ import (
 	"time"
 )
 
+// Client is an HTTP client for the Kite API.
 type Client struct {
 	baseURL    string
 	token      string
 	httpClient *http.Client
 }
 
+// HealthResponse is the response from the Kite API health check endpoint.
 type HealthResponse struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
 }
 
+// PipelineFailurePayload is the JSON body for a pipeline failure webhook.
 type PipelineFailurePayload struct {
 	PipelineName  string `json:"pipelineName"`
 	Namespace     string `json:"namespace"`
@@ -45,11 +48,13 @@ type PipelineFailurePayload struct {
 	LogsURL       string `json:"logsUrl,omitempty"`
 }
 
+// PipelineSuccessPayload is the JSON body for a pipeline success webhook.
 type PipelineSuccessPayload struct {
 	PipelineName string `json:"pipelineName"`
 	Namespace    string `json:"namespace"`
 }
 
+// CustomPayload is the JSON body for a custom webhook.
 type CustomPayload struct {
 	PipelineId string   `json:"pipelineId"`
 	Namespace  string   `json:"namespace"`
@@ -60,7 +65,7 @@ type CustomPayload struct {
 // NewClient creates a new Kite API client
 func NewClient(baseURL, token string) (*Client, error) {
 	if baseURL == "" {
-		return nil, fmt.Errorf("Kite API base URL cannot be empty")
+		return nil, fmt.Errorf("empty base URL for Kite API")
 	}
 
 	_, err := url.Parse(baseURL)
@@ -81,7 +86,7 @@ func NewClient(baseURL, token string) (*Client, error) {
 // the decoded response body in the value pointed to by out
 func (c *Client) sendRequest(req *http.Request, out any) error {
 	if c.token == "" {
-		return fmt.Errorf("Kite API authentication token is not set")
+		return fmt.Errorf("missing authentication token for Kite API")
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
@@ -90,7 +95,7 @@ func (c *Client) sendRequest(req *http.Request, out any) error {
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		bodyBytes, readErr := io.ReadAll(resp.Body)
@@ -99,7 +104,7 @@ func (c *Client) sendRequest(req *http.Request, out any) error {
 		if readErr == nil {
 			responseBody = string(bodyBytes)
 		}
-		return fmt.Errorf("Kite API returned status code %d: %s", resp.StatusCode, responseBody)
+		return fmt.Errorf("kite API returned status code %d: %s", resp.StatusCode, responseBody)
 	}
 
 	if out != nil {
