@@ -67,3 +67,20 @@ jobs:
 
       - name: markdownlint
         run: npx --yes markdownlint-cli@0.48.0 "**/*.md"
+
+  agent:
+    name: Agent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Check length of AGENTS.md (max 300 lines)
+        run: |
+          set -euo pipefail
+          lines=$(wc -l < AGENTS.md)
+          echo "AGENTS.md line count: ${lines}"
+          if [ "${lines}" -gt 300 ]; then
+            echo "::warning file=AGENTS.md::AGENTS.md has ${lines} lines (max 300)."
+            exit 1
+          fi
