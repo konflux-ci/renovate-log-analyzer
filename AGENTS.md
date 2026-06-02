@@ -37,4 +37,4 @@ Stack: Go. Docs: root `README.md`, `docs/README.md`.
 
 ## Pattern References
 
-- **New selector**: Follow the pattern explained in `docs/README.md` and used in `pkg/doctor/checks.go`.
+- **New selector**: Use the `add-selector` skill (`skills/add-selector/SKILL.md`). See also `docs/README.md` and `pkg/doctor/checks.go`.
