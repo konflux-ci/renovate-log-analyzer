@@ -6,3 +6,9 @@ run:
 
 linters:
   default: standard
+  enable:
+    - gosec
+  settings:
+    gosec:
+      excludes:
+        - G304 # file path from variable is expected for a CLI
