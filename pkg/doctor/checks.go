@@ -233,8 +233,12 @@ func platformCommitError(line *LogEntry, report *SimpleReport) {
 
 	errMessage, _ := errData["message"].(string)
 	fullTask := ""
-	for _, cmd := range errData["task"].(map[string]interface{})["commands"].([]interface{}) {
-		fullTask = fmt.Sprintf("%s %s", fullTask, cmd)
+	if taskData, ok := errData["task"].(map[string]interface{}); ok {
+		if commands, ok := taskData["commands"].([]interface{}); ok {
+			for _, cmd := range commands {
+				fullTask = fmt.Sprintf("%s %s", fullTask, cmd)
+			}
+		}
 	}
 
 	report.Error(
