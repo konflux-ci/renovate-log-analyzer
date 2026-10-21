@@ -19,6 +19,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"strings"
 )
@@ -51,15 +53,15 @@ func ProcessLogFile(ctx context.Context, logFilePath string) (string, *SimpleRep
 	}
 	defer func() { _ = file.Close() }()
 
-	// Read line by line
+	// Read line by line using bufio.Reader instead of bufio.Scanner
+	// to avoid the hard token-size limit that causes "bufio.Scanner: token too long"
+	// errors on oversized Renovate JSON log lines.
 	const maxBufferSize = 1 * 1024 * 1024
-	scanner := bufio.NewScanner(file)
-	buf := make([]byte, maxBufferSize)
-	scanner.Buffer(buf, maxBufferSize)
+	reader := bufio.NewReaderSize(file, maxBufferSize)
 
 	lineCount := 0
 
-	for scanner.Scan() {
+	for {
 		// Check cancellation every 100 lines to reduce overhead
 		if lineCount%100 == 0 {
 			select {
@@ -71,12 +73,38 @@ func ProcessLogFile(ctx context.Context, logFilePath string) (string, *SimpleRep
 			default:
 			}
 		}
+
+		line, err := reader.ReadString('\n')
+		if err != nil && err != io.EOF {
+			if len(errorsMap) == 0 && len(fatalMap) == 0 && len(report.Errors) == 0 && len(report.Warnings) == 0 && len(report.Infos) == 0 {
+				return "", report, fmt.Errorf("error reading log file: %w", err)
+			}
+			return buildErrorMessageFromLogs(errorsMap, fatalMap), report, nil
+		}
+
+		// Trim the trailing newline (if present) for consistent processing
+		line = strings.TrimRight(line, "\n")
+
+		// On EOF, process any remaining partial line, then stop
+		if err == io.EOF {
+			if line == "" {
+				break
+			}
+			// Process this last partial line, then exit after
+		}
+
 		lineCount++
-		line := scanner.Text()
+
+		if len(line) > maxBufferSize {
+			log.Printf("WARNING: log line %d exceeds 1 MiB (%d bytes), processing anyway", lineCount, len(line))
+		}
 
 		// Attempt to parse the JSON log line
-		entry, err := parseLogLine(line)
-		if err != nil {
+		entry, parseErr := parseLogLine(line)
+		if parseErr != nil {
+			if err == io.EOF {
+				break
+			}
 			continue
 		}
 
@@ -95,13 +123,10 @@ func ProcessLogFile(ctx context.Context, logFilePath string) (string, *SimpleRep
 				checkFunc(&entry, report)
 			}
 		}
-	}
 
-	if err := scanner.Err(); err != nil {
-		if len(errorsMap) == 0 && len(fatalMap) == 0 && len(report.Errors) == 0 && len(report.Warnings) == 0 && len(report.Infos) == 0 {
-			return "", report, fmt.Errorf("error reading log file: %w", err)
+		if err == io.EOF {
+			break
 		}
-		return buildErrorMessageFromLogs(errorsMap, fatalMap), report, nil
 	}
 
 	return buildErrorMessageFromLogs(errorsMap, fatalMap), report, nil
