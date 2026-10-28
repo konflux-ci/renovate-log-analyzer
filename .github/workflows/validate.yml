@@ -63,7 +63,7 @@ jobs:
       - name: Set up Node for markdownlint
         uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: markdownlint
         run: npx --yes markdownlint-cli@0.48.0 "**/*.md"
