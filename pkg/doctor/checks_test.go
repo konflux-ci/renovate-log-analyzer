@@ -43,7 +43,7 @@ func TestPlatformCommitError(t *testing.T) {
 				},
 			},
 			wantErrors:   1,
-			wantContains: "push",
+			wantContains: "push --force origin",
 		},
 		{
 			name: "err map has no task key",
