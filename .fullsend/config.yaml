@@ -14,6 +14,11 @@ roles:
 allowed_remote_resources:
     - https://raw.githubusercontent.com/fullsend-ai/fullsend/
     - https://raw.githubusercontent.com/fullsend-ai/agents/
+# Override the built-in review agent to skip MintMaker/Renovate bot PRs.
+# Harness: .fullsend/harness/review.yaml
+agents:
+    - name: review
+      source: harness/review.yaml
 create_issues:
     allow_targets:
         repos:
