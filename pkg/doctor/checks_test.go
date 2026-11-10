@@ -30,7 +30,7 @@ func TestPlatformCommitError(t *testing.T) {
 			name: "well-formed entry with task and commands",
 			line: &LogEntry{
 				Msg: "Platform-native commit: unknown error",
-				Extras: map[string]any{
+				Extras: map[string]interface{}{
 					"branch": "main",
 					"err": map[string]interface{}{
 						"message": "push failed",
@@ -49,7 +49,7 @@ func TestPlatformCommitError(t *testing.T) {
 			name: "err map has no task key",
 			line: &LogEntry{
 				Msg: "Platform-native commit: unknown error",
-				Extras: map[string]any{
+				Extras: map[string]interface{}{
 					"branch": "main",
 					"err": map[string]interface{}{
 						"message": "push failed",
@@ -63,7 +63,7 @@ func TestPlatformCommitError(t *testing.T) {
 			name: "task exists but has no commands",
 			line: &LogEntry{
 				Msg: "Platform-native commit: unknown error",
-				Extras: map[string]any{
+				Extras: map[string]interface{}{
 					"branch": "main",
 					"err": map[string]interface{}{
 						"message": "push failed",
@@ -80,7 +80,7 @@ func TestPlatformCommitError(t *testing.T) {
 			name: "task is not a map type",
 			line: &LogEntry{
 				Msg: "Platform-native commit: unknown error",
-				Extras: map[string]any{
+				Extras: map[string]interface{}{
 					"branch": "main",
 					"err": map[string]interface{}{
 						"message": "push failed",
@@ -95,7 +95,7 @@ func TestPlatformCommitError(t *testing.T) {
 			name: "err is not a map type",
 			line: &LogEntry{
 				Msg: "Platform-native commit: unknown error",
-				Extras: map[string]any{
+				Extras: map[string]interface{}{
 					"branch": "main",
 					"err":    "string-error",
 				},
@@ -106,7 +106,7 @@ func TestPlatformCommitError(t *testing.T) {
 			name: "err key is missing",
 			line: &LogEntry{
 				Msg: "Platform-native commit: unknown error",
-				Extras: map[string]any{
+				Extras: map[string]interface{}{
 					"branch": "main",
 				},
 			},
@@ -116,7 +116,7 @@ func TestPlatformCommitError(t *testing.T) {
 			name: "task is nil",
 			line: &LogEntry{
 				Msg: "Platform-native commit: unknown error",
-				Extras: map[string]any{
+				Extras: map[string]interface{}{
 					"branch": "main",
 					"err": map[string]interface{}{
 						"message": "push failed",
