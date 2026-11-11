@@ -1,0 +1,9 @@
+# Skip review for MintMaker/Renovate PRs from the Red Hat Konflux GitHub App.
+# REVIEW_SKIP_AUTHORS is read by the review pre-script on the runner host
+# (before sandbox), so it belongs under env.runner.
+# See: https://fullsend.sh/docs/guides/user/customizing-agents
+base: https://raw.githubusercontent.com/fullsend-ai/agents/85599719fd7debc93643f191a12aa503d5f7d0bb/harness/review.yaml#sha256=d3e79644c7d3361d8aafb643f94b34779c5779bcdb3a7a952b8b53ff2e14cfd9
+
+env:
+  runner:
+    REVIEW_SKIP_AUTHORS: "red-hat-konflux[bot]"
